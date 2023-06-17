@@ -160,7 +160,9 @@ class ESKF {
     void UpdateAndReset() {
         p_ += dx_.template block<3, 1>(0, 0);
         v_ += dx_.template block<3, 1>(3, 0);
-        R_ = R_ * SO3::exp(dx_.template block<3, 1>(6, 0));
+//        R_ = R_ * SO3::exp(dx_.template block<3, 1>(6, 0));
+        // TODO: 第三题，R的误差更新也用左乘形式
+        R_ = SO3::exp(dx_.template block<3, 1>(6, 0)) * R_;
 
         if (options_.update_bias_gyro_) {
             bg_ += dx_.template block<3, 1>(9, 0);
@@ -179,7 +181,10 @@ class ESKF {
     /// 对P阵进行投影，参考式(3.63)
     void ProjectCov() {
         Mat18T J = Mat18T::Identity();
+//        J.template block<3, 3>(6, 6) = Mat3T::Identity() - 0.5 * SO3::hat(dx_.template block<3, 1>(6, 0));
+        // TODO: 第三题，左乘模型下的切空间投影Jacobian
         J.template block<3, 3>(6, 6) = Mat3T::Identity() - 0.5 * SO3::hat(dx_.template block<3, 1>(6, 0));
+
         cov_ = J * cov_ * J.transpose();
     }
 
@@ -230,7 +235,9 @@ bool ESKF<S>::Predict(const IMU& imu) {
     // nominal state 递推
     VecT new_p = p_ + v_ * dt + 0.5 * (R_ * (imu.acce_ - ba_)) * dt * dt + 0.5 * g_ * dt * dt;
     VecT new_v = v_ + R_ * (imu.acce_ - ba_) * dt + g_ * dt;
-    SO3 new_R = R_ * SO3::exp((imu.gyro_ - bg_) * dt);
+//    SO3 new_R = R_ * SO3::exp((imu.gyro_ - bg_) * dt);
+    // TODO: 第三题，左乘名义状态量的运动学方程
+    SO3 new_R = SO3::exp((imu.gyro_ - bg_) * dt) * R_;
 
     R_ = new_R;
     v_ = new_v;
@@ -240,13 +247,32 @@ bool ESKF<S>::Predict(const IMU& imu) {
     // error state 递推
     // 计算运动过程雅可比矩阵 F，见(3.47)
     // F实际上是稀疏矩阵，也可以不用矩阵形式进行相乘而是写成散装形式，这里为了教学方便，使用矩阵形式
-    Mat18T F = Mat18T::Identity();                                                 // 主对角线
-    F.template block<3, 3>(0, 3) = Mat3T::Identity() * dt;                         // p 对 v
-    F.template block<3, 3>(3, 6) = -R_.matrix() * SO3::hat(imu.acce_ - ba_) * dt;  // v对theta
-    F.template block<3, 3>(3, 12) = -R_.matrix() * dt;                             // v 对 ba
-    F.template block<3, 3>(3, 15) = Mat3T::Identity() * dt;                        // v 对 g
-    F.template block<3, 3>(6, 6) = SO3::exp(-(imu.gyro_ - bg_) * dt).matrix();     // theta 对 theta
-    F.template block<3, 3>(6, 9) = -Mat3T::Identity() * dt;                        // theta 对 bg
+//    Mat18T F = Mat18T::Identity();                                                 // 主对角线
+//    F.template block<3, 3>(0, 3) = Mat3T::Identity() * dt;                         // p 对 v
+//    F.template block<3, 3>(3, 6) = -R_.matrix() * SO3::hat(imu.acce_ - ba_) * dt;  // v 对 theta
+//    F.template block<3, 3>(3, 12) = -R_.matrix() * dt;                             // v 对 ba
+//    F.template block<3, 3>(3, 15) = Mat3T::Identity() * dt;                        // v 对 g
+//    F.template block<3, 3>(6, 6) = SO3::exp(-(imu.gyro_ - bg_) * dt).matrix();     // theta 对 theta
+//    F.template block<3, 3>(6, 9) = -Mat3T::Identity() * dt;                        // theta 对 bg
+    // TODO: 第三题，左乘误差状态的离散运动学方程
+    Mat18T F = Mat18T::Identity();                                                          // 主对角线
+    F.template block<3, 3>(0, 3) = Mat3T::Identity() * dt;                                  // p 对 v
+    F.template block<3, 3>(3, 6) = SO3::hat(R_.matrix() * (ba_ - imu.acce_)) * dt;   // v 对 theta
+    F.template block<3, 3>(3, 12) = -R_.matrix() * dt;                                      // v 对 ba
+    F.template block<3, 3>(3, 15) = Mat3T::Identity() * dt;                                 // v 对 g
+    F.template block<3, 3>(6, 9) = -R_.matrix() * dt;                                       // theta 对 bg
+
+    // TODO: 第二题，把运动方程拆开
+//    VecT delta_p = dx_.template block<3, 1>(0, 0);
+//    VecT delta_v = dx_.template block<3, 1>(3, 0);
+//    VecT delta_theta = dx_.template block<3, 1>(6, 0);
+//    VecT delta_bg = dx_.template block<3, 1>(9, 0);
+//    VecT delta_ba = dx_.template block<3, 1>(12, 0);
+//    VecT delta_g = dx_.template block<3, 1>(15, 0);
+//
+//    dx_.template block<3, 1>(0, 0) = delta_p + delta_v * dt;
+//    dx_.template block<3, 1>(3, 0) = delta_v - R_.matrix() * SO3::hat(imu.acce_ - ba_) * dt * delta_theta - R_.matrix() * dt * delta_ba + delta_g * dt;
+//    dx_.template block<3, 1>(6, 0) = SO3::exp(-(imu.gyro_ - bg_) * dt).matrix() * delta_theta - delta_bg * dt;
 
     // mean and cov prediction
     dx_ = F * dx_;  // 这行其实没必要算，dx_在重置之后应该为零，因此这步可以跳过，但F需要参与Cov部分计算，所以保留
@@ -322,7 +348,9 @@ bool ESKF<S>::ObserveSE3(const SE3& pose, double trans_noise, double ang_noise) 
     // 更新x和cov
     Vec6d innov = Vec6d::Zero();
     innov.template head<3>() = (pose.translation() - p_);          // 平移部分
-    innov.template tail<3>() = (R_.inverse() * pose.so3()).log();  // 旋转部分(3.67)
+//    innov.template tail<3>() = (R_.inverse() * pose.so3()).log();  // 旋转部分(3.67)
+    // TODO: 第三题，左乘模型下的观测更新量
+    innov.template tail<3>() = (pose.so3() * R_.inverse()).log();
 
     dx_ = K * innov;
     cov_ = (Mat18T::Identity() - K * H) * cov_;

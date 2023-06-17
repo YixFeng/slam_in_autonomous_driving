@@ -5,6 +5,8 @@
 #include "ch4/g2o_types.h"
 #include "common/g2o_types.h"
 
+#include <glog/logging.h>
+
 namespace sad {
 
 EdgeInertial::EdgeInertial(std::shared_ptr<IMUPreintegration> preinteg, const Vec3d& gravity, double weight)
@@ -133,6 +135,67 @@ void EdgeInertial::linearizeOplus() {
     _jacobianOplus[5].setZero();
     // dv/dv2, 4,46b
     _jacobianOplus[5].block<3, 3>(3, 0) = R1T.matrix();  // OK
+
+    // TODO: 深蓝学院第三章作业第三题 - 验证数值导和解析导的一致性
+    // 验证了雅克比中较为复杂的残差对姿态的雅克比这部分，其余部分求数值导不需要使用广义加法增加扰动，较为容易
+    {
+        // 打印_jacobianOplus[0]的解析解雅克比
+        LOG(INFO) << "[解析导] 残差对Posei(R_i p_i)的Jacobian: \n" << _jacobianOplus[0];
+
+        // 定义一个小量
+        const double eps = 1e-9;
+        // 定义扰动
+        Vec3d delta_x(eps, 0, 0);
+        Vec3d delta_y(0, eps, 0);
+        Vec3d delta_z(0, 0, eps);
+
+        // 写出带有此扰动的状态量Ri和pi
+        const SO3 Ri_updateX = R1 * SO3::exp(delta_x);
+        const SO3 Ri_updateY = R1 * SO3::exp(delta_y);
+        const SO3 Ri_updateZ = R1 * SO3::exp(delta_z);
+        const Vec3d pi_updateX = pi + delta_x;
+        const Vec3d pi_updateY = pi + delta_y;
+        const Vec3d pi_updateZ = pi + delta_z;
+
+        // 定义数值解雅克比
+        Mat96d numerical_jacobian = Mat96d::Zero();
+
+        // 更新前的rv
+        const Vec3d ev = R1T.matrix() * (vj - vi - grav_ * dt_) - preint_->GetDeltaVelocity(bg, ba);
+        // 计算出更新后的残差rR rv rp
+        const Vec3d er_updateX = SO3(SO3(dR).inverse() * Ri_updateX.inverse() * R2).log(); // rR: 仅对Ri有雅克比，这里update也是指的Ri。对pi的数值雅克比残差项不会发生改变，所以雅克比是0
+        const Vec3d er_updateY = SO3(SO3(dR).inverse() * Ri_updateY.inverse() * R2).log();
+        const Vec3d er_updateZ = SO3(SO3(dR).inverse() * Ri_updateZ.inverse() * R2).log();
+        const Vec3d ev_updateX = Ri_updateX.inverse().matrix() * (vj - vi - grav_ * dt_) - preint_->GetDeltaVelocity(bg, ba); // rv
+        const Vec3d ev_updateY = Ri_updateY.inverse().matrix() * (vj - vi - grav_ * dt_) - preint_->GetDeltaVelocity(bg, ba);
+        const Vec3d ev_updateZ = Ri_updateZ.inverse().matrix() * (vj - vi - grav_ * dt_) - preint_->GetDeltaVelocity(bg, ba);
+        const Vec3d ep_updateRx = Ri_updateX.inverse().matrix() * (pj - pi - vi * dt_ - 0.5 * grav_ * dt_ * dt_) - preint_->GetDeltaPosition(bg, ba); // rp: update Ri
+        const Vec3d ep_updateRy = Ri_updateY.inverse().matrix() * (pj - pi - vi * dt_ - 0.5 * grav_ * dt_ * dt_) - preint_->GetDeltaPosition(bg, ba);
+        const Vec3d ep_updateRz = Ri_updateZ.inverse().matrix() * (pj - pi - vi * dt_ - 0.5 * grav_ * dt_ * dt_) - preint_->GetDeltaPosition(bg, ba);
+        const Vec3d ep_updatepx = R1T * (pj - pi_updateX - vi * dt_ - 0.5 * grav_ * dt_ * dt_) - preint_->GetDeltaPosition(bg, ba); // rp: update pi
+        const Vec3d ep_updatepy = R1T * (pj - pi_updateY - vi * dt_ - 0.5 * grav_ * dt_ * dt_) - preint_->GetDeltaPosition(bg, ba);
+        const Vec3d ep_updatepz = R1T * (pj - pi_updateZ - vi * dt_ - 0.5 * grav_ * dt_ * dt_) - preint_->GetDeltaPosition(bg, ba);
+
+        // 整理
+        Vec9d e_updateRx, e_updateRy, e_updateRz, e_updatepx, e_updatepy, e_updatepz;
+        e_updateRx << er_updateX, ev_updateX, ep_updateRx;
+        e_updateRy << er_updateY, ev_updateY, ep_updateRy;
+        e_updateRz << er_updateZ, ev_updateZ, ep_updateRz;
+        e_updatepx << er, ev, ep_updatepx; // er ev定义式中不包含pi，无需更新
+        e_updatepy << er, ev, ep_updatepy;
+        e_updatepz << er, ev, ep_updatepz;
+
+        // 填入数值解
+        numerical_jacobian.col(0) = (e_updateRx - _error) / eps;
+        numerical_jacobian.col(1) = (e_updateRy - _error) / eps;
+        numerical_jacobian.col(2) = (e_updateRz - _error) / eps;
+        numerical_jacobian.col(3) = (e_updatepx - _error) / eps;
+        numerical_jacobian.col(4) = (e_updatepy - _error) / eps;
+        numerical_jacobian.col(5) = (e_updatepz - _error) / eps;
+
+        // 打印数值解雅克比
+        LOG(INFO) << "[数值导] 残差对Posei(R_i p_i)的Jacobian: \n" << numerical_jacobian;
+    }
 }
 
 }  // namespace sad
