@@ -130,7 +130,7 @@ void KdTree::Knn(const Vec3f &pt, KdTreeNode *node, std::priority_queue<NodeAndD
     }
 
     Knn(pt, this_side, knn_result);
-    if (NeedExpand(pt, node, knn_result)) {  // 注意这里是跟自己比
+    if (NeedExpand(pt, node, knn_result)) {  // 注意这里是跟自己比 优先搜树深度高的that_side subtree
         Knn(pt, that_side, knn_result);
     }
 }
@@ -180,7 +180,7 @@ bool KdTree::FindSplitAxisAndThresh(const IndexVec &point_idx, int &axis, float 
     Vec3f mean;
     math::ComputeMeanAndCovDiag(point_idx, mean, var, [this](int idx) { return cloud_[idx]; });
     int max_i, max_j;
-    var.maxCoeff(&max_i, &max_j);
+    var.maxCoeff(&max_i, &max_j); // var 在这儿是个3by1的向量，max_i就指向方差最大的那个轴，max_j没什么用
     axis = max_i;
     th = mean[axis];
 

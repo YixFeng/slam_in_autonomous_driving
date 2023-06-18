@@ -33,6 +33,8 @@ class GridNN {
 
         // for 3D
         NEARBY6,  // 上下左右前后
+        // TODO: 第四章习题1，实现NEARBY14
+        NEARBY14,  // doc中附有图示
     };
 
     /**
@@ -48,9 +50,9 @@ class GridNN {
         if (dim == 2 && nearby_type_ == NearbyType::NEARBY6) {
             LOG(INFO) << "2D grid does not support nearby6, using nearby4 instead.";
             nearby_type_ = NearbyType::NEARBY4;
-        } else if (dim == 3 && (nearby_type_ != NearbyType::NEARBY6 && nearby_type_ != NearbyType::CENTER)) {
-            LOG(INFO) << "3D grid does not support nearby4/8, using nearby6 instead.";
-            nearby_type_ = NearbyType::NEARBY6;
+        } else if (dim == 3 && (nearby_type != NearbyType::NEARBY14 && nearby_type_ != NearbyType::NEARBY6 && nearby_type_ != NearbyType::CENTER)) {
+            LOG(INFO) << "3D grid does not support nearby4/8, using nearby14 instead.";
+            nearby_type_ = NearbyType::NEARBY14;
         }
 
         GenerateNearbyGrids();
@@ -78,6 +80,7 @@ class GridNN {
 
     NearbyType nearby_type_ = NearbyType::NEARBY4;
     std::unordered_map<KeyType, std::vector<size_t>, hash_vec<dim>> grids_;  //  栅格数据
+                                                                             // KeyType是键，对应在栅格中的位置，它会映射到一个hash_vec上，vector<size_t>里存的是这个key的栅格里有哪些idx的点
     CloudPtr cloud_;
 
     std::vector<KeyType> nearby_grids_;  // 附近的栅格
@@ -130,6 +133,11 @@ void GridNN<3>::GenerateNearbyGrids() {
     } else if (nearby_type_ == NearbyType::NEARBY6) {
         nearby_grids_ = {KeyType(0, 0, 0),  KeyType(-1, 0, 0), KeyType(1, 0, 0), KeyType(0, 1, 0),
                          KeyType(0, -1, 0), KeyType(0, 0, -1), KeyType(0, 0, 1)};
+    } else if (nearby_type_ == NearbyType::NEARBY14) {
+        nearby_grids_ = {KeyType(0, 0, 0), KeyType(-1, 0, 0), KeyType(1, 0, 0), KeyType(0, -1, 0),
+                         KeyType(0, 1, 0), KeyType(0, 0, -1), KeyType(-1, 0, -1), KeyType(1, 0, -1),
+                         KeyType(0, -1, -1), KeyType(0, 1, -1),KeyType(0, 0, 1), KeyType(-1, 0, 1),
+                         KeyType(1, 0, 1), KeyType(0, -1, 1), KeyType(0, 1, 1)};
     }
 }
 

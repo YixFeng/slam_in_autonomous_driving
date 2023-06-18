@@ -33,6 +33,10 @@ include_directories(${PCL_INCLUDE_DIRS})
 find_package(OpenCV REQUIRED)
 include_directories(${OpenCV_INCLUDE_DIRS})
 
+# nanoflann
+find_package(nanoflann REQUIRED)
+include_directories(${NANOFLANN_INCLUDE_DIRS})
+
 # g2o 使用thirdparty中的
 include_directories(${PROJECT_SOURCE_DIR}/thirdparty/g2o/)
 set(g2o_libs

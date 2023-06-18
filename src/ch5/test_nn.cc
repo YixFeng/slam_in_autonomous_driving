@@ -12,9 +12,10 @@
 #include "ch5/gridnn.hpp"
 #include "ch5/kdtree.h"
 #include "ch5/octo_tree.h"
-#include "common/point_cloud_utils.h"
-#include "common/point_types.h"
-#include "common/sys_utils.h"
+#include "ch5/nanoflann_utils.h"
+//#include "common/point_cloud_utils.h"
+//#include "common/point_types.h"
+//#include "common/sys_utils.h"
 
 DEFINE_string(first_scan_path, "./data/ch5/first.pcd", "第一个点云路径");
 DEFINE_string(second_scan_path, "./data/ch5/second.pcd", "第二个点云路径");
@@ -115,11 +116,14 @@ TEST(CH5_TEST, GRID_NN) {
     sad::GridNN<2> grid0(0.1, sad::GridNN<2>::NearbyType::CENTER), grid4(0.1, sad::GridNN<2>::NearbyType::NEARBY4),
         grid8(0.1, sad::GridNN<2>::NearbyType::NEARBY8);
     sad::GridNN<3> grid3(0.1, sad::GridNN<3>::NearbyType::NEARBY6);
+    // TODO: 第四章习题1，test NEARBY14
+    sad::GridNN<3> grid14(0.1, sad::GridNN<3>::NearbyType::NEARBY14);
 
     grid0.SetPointCloud(first);
     grid4.SetPointCloud(first);
     grid8.SetPointCloud(first);
     grid3.SetPointCloud(first);
+    grid14.SetPointCloud(first);
 
     // 评价各种版本的Grid NN
     // sorry没有C17的template lambda... 下面必须写的啰嗦一些
@@ -163,13 +167,25 @@ TEST(CH5_TEST, GRID_NN) {
     LOG(INFO) << "===================";
     sad::evaluate_and_call(
         [&first, &second, &grid3, &matches]() { grid3.GetClosestPointForCloud(first, second, matches); },
-        "Grid 3D 单线程", 10);
+        "Grid 3D NEARBY6 单线程", 10);
     EvaluateMatches(truth_matches, matches);
 
     LOG(INFO) << "===================";
     sad::evaluate_and_call(
         [&first, &second, &grid3, &matches]() { grid3.GetClosestPointForCloudMT(first, second, matches); },
-        "Grid 3D 多线程", 10);
+        "Grid 3D NEARBY6 多线程", 10);
+    EvaluateMatches(truth_matches, matches);
+
+    LOG(INFO) << "===================";
+    sad::evaluate_and_call(
+        [&first, &second, &grid14, &matches](){ grid14.GetClosestPointForCloud(first, second, matches); },
+        "Grid 3D NEARBY14 单线程", 10);
+    EvaluateMatches(truth_matches, matches);
+
+    LOG(INFO) << "===================";
+    sad::evaluate_and_call(
+        [&first, &second, &grid14, &matches]() { grid14.GetClosestPointForCloudMT(first, second, matches); },
+        "Grid 3D NEARBY14 多线程", 10);
     EvaluateMatches(truth_matches, matches);
 
     SUCCEED();
@@ -261,6 +277,33 @@ TEST(CH5_TEST, KDTREE_KNN) {
             matches.push_back({m, i});
         }
     }
+    EvaluateMatches(true_matches, matches);
+
+    // TODO: 第四章习题3 nanoflann
+    LOG(INFO) << "building nanoflann tree";
+    PointCloud<float> first_cloud;
+    first_cloud.pts.resize(first->size());
+    for (int i = 0; i < first->size(); i++) {
+        first_cloud.pts[i].x = first->points[i].x;
+        first_cloud.pts[i].y = first->points[i].y;
+        first_cloud.pts[i].z = first->points[i].z;
+    }
+
+    sad::evaluate_and_call([&first_cloud](){ nano_flann_tree nanotree(3, first_cloud, 1 /* max leaf size */); },
+                           "NanoFlann Tree build", 1); // 不想单独再写个时间评估函数了，这个nanotree的build是通过构造函数构建的，以lambda传入，外部使用需要再写一遍
+    nano_flann_tree nanotree(3, first_cloud, 1 /* max leaf size */);
+
+    LOG(INFO) << "searching nanoflann";
+    matches.clear();
+    sad::evaluate_and_call([&nanotree, &second, &matches]() {
+        GetClosestPointNanoFlann(nanotree, second, matches, 5);
+    }, "NanoFlann Tree 5NN 单线程", 1);
+    EvaluateMatches(true_matches, matches);
+
+    matches.clear();
+    sad::evaluate_and_call([&nanotree, &second, &matches]() {
+        GetClosestPointNanoFlannMT(nanotree, second, matches, 5);
+    }, "NanoFlann Tree 5NN 多线程", 1);
     EvaluateMatches(true_matches, matches);
 
     LOG(INFO) << "done.";
