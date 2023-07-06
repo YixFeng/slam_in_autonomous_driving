@@ -63,11 +63,11 @@ double OccupancyMap::FindRangeInAngle(double angle, Scan2d::Ptr scan) {
         } else if (range1 < scan->range_min || range1 > scan->range_max) {
             range = range2;
             real_angle = real_angle2;
-        } else if (std::fabs(range1 - range2) > 0.3) {
+        } else if (std::fabs(range1 - range2) > 0.3) { // 如果相邻两个scan points的range相距较远，那么选angle距离近的那个
             range = s > 0.5 ? range2 : range1;
             real_angle = s > 0.5 ? real_angle2 : real_angle1;
         } else {
-            range = range1 * (1 - s) + range2 * s;
+            range = range1 * (1 - s) + range2 * s; // 一次线性插值
         }
     }
     return range;
@@ -94,7 +94,7 @@ void OccupancyMap::AddLidarFrame(std::shared_ptr<Frame> frame, GridMethod method
         double x = scan->ranges[i] * std::cos(real_angle);
         double y = scan->ranges[i] * std::sin(real_angle);
 
-        endpoints.emplace(World2Image(frame->pose_ * Vec2d(x, y)));
+        endpoints.emplace(World2Image(frame->pose_ * Vec2d(x, y))); // 用pose_.inv也就是T_S_W拿到submap系下的scan points
     }
 
     if (method == GridMethod::MODEL_POINTS) {

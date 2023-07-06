@@ -128,8 +128,8 @@ void Mapping2D::ExpandSubmap() {
     cv::imwrite("./data/ch6/submap_" + std::to_string(last_submap->GetId()) + ".png",
                 last_submap->GetOccuMap().GetOccupancyGridBlackWhite());
 
-    current_submap_ = std::make_shared<Submap>(current_frame_->pose_);
-    current_frame_->pose_submap_ = SE2();  // 这个归零
+    current_submap_ = std::make_shared<Submap>(current_frame_->pose_); // 用当前帧的T_W_C作为新一张submap的T_W_S
+    current_frame_->pose_submap_ = SE2();  // 这个归零，当前帧在新submap中是第一帧，在submap中的位姿T_S_C为0
 
     current_submap_->SetId(++submap_id_);
     current_submap_->AddKeyFrame(current_frame_);

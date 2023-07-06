@@ -37,6 +37,12 @@ class Icp2d {
     /// 使用高斯牛顿法进行配准, Point-to-Plane
     bool AlignGaussNewtonPoint2Plane(SE2& init_pose);
 
+    /// TODO: 第五章习题1，使用G2O进行P2P配准
+    bool AlignG2OP2P(SE2& init_pose);
+
+    /// TODO: 使用G2O进行P2L配准
+    bool AlignG2OP2L(SE2& init_pose);
+
    private:
     // 建立目标点云的Kdtree
     void BuildTargetKdTree();

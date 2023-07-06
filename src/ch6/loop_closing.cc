@@ -94,7 +94,7 @@ void LoopClosing::MatchInHistorySubmaps() {
         SE2 pose_in_target_submap = submap->GetPose().inverse() * current_frame_->pose_;  // T_S1_C
 
         if (mr->AlignG2O(pose_in_target_submap)) {
-            // set constraints from current submap to target submap
+            // set constraints from current submap to target submap 回环匹配到的那个submap S1与当前kf所在的submap S2之间的变换
             // T_S1_S2 = T_S1_C * T_C_W * T_W_S2
             SE2 T_this_cur =
                 pose_in_target_submap * current_frame_->pose_.inverse() * submaps_[last_submap_id_]->GetPose();

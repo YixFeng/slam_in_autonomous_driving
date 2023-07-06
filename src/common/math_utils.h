@@ -200,7 +200,7 @@ inline float GetPixelValue(const cv::Mat& img, float x, float y) {
     float xx = x - floor(x);
     float yy = y - floor(y);
     return float((1 - xx) * (1 - yy) * data[0] + xx * (1 - yy) * data[1] + (1 - xx) * yy * data[img.step / sizeof(T)] +
-                 xx * yy * data[img.step / sizeof(T) + 1]);
+                 xx * yy * data[img.step / sizeof(T) + 1]); // 双线性插值，分母在本例子中是1，所以没有包含分母
 }
 
 template <typename S, int rows, int cols>

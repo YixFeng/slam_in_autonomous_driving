@@ -3,11 +3,21 @@
 //
 
 #include "ch6/icp_2d.h"
+#include "ch6/g2o_types.h"
 #include "common/math_utils.h"
 
 #include <glog/logging.h>
 #include <pcl/kdtree/kdtree_flann.h>
 #include <pcl/search/impl/kdtree.hpp>
+
+#include <g2o/core/base_unary_edge.h>
+#include <g2o/core/block_solver.h>
+#include <g2o/core/optimization_algorithm_levenberg.h>
+#include <g2o/core/robust_kernel.h>
+#include <g2o/core/robust_kernel_impl.h>
+#include <g2o/core/sparse_optimizer.h>
+#include <g2o/solvers/cholmod/linear_solver_cholmod.h>
+#include <g2o/solvers/dense/linear_solver_dense.h>
 
 namespace sad {
 
@@ -46,7 +56,7 @@ bool Icp2d::AlignGaussNewton(SE2& init_pose) {
 
             if (nn_idx.size() > 0 && dis[0] < max_dis2) {
                 effective_num++;
-                Mat32d J;
+                Mat32d J; // 统一用的分母布局
                 J << 1, 0, 0, 1, -r * std::sin(angle + theta), r * std::cos(angle + theta);
                 H += J * J.transpose();
 
@@ -173,6 +183,102 @@ bool Icp2d::AlignGaussNewtonPoint2Plane(SE2& init_pose) {
     LOG(INFO) << "estimated pose: " << current_pose.translation().transpose()
               << ", theta: " << current_pose.so2().log();
 
+    return true;
+}
+
+/**
+ * TODO: 第五章习题1，使用G2O进行P2P配准
+ * @param init_pose
+ * @return
+ */
+bool Icp2d::AlignG2OP2P(SE2& init_pose) {
+    using BlockSolverType = g2o::BlockSolver<g2o::BlockSolverTraits<3, 2>>;
+    using LinearSolverType = g2o::LinearSolverCholmod<BlockSolverType::PoseMatrixType>;
+    auto* solver = new g2o::OptimizationAlgorithmLevenberg(
+        g2o::make_unique<BlockSolverType>(g2o::make_unique<LinearSolverType>()));
+    g2o::SparseOptimizer optimizer;
+    optimizer.setAlgorithm(solver);
+
+    auto* v = new VertexSE2();
+    v->setId(0);
+    v->setEstimate(init_pose);
+    optimizer.addVertex(v);
+
+    const double rk_delta = 0.8;
+
+    for (size_t i = 0; i < source_scan_->ranges.size(); ++i) {
+        float r = source_scan_->ranges[i];
+        if (r < source_scan_->range_min || r > source_scan_->range_max) {
+            continue;
+        }
+
+        float angle = source_scan_->angle_min + i * source_scan_->angle_increment;
+        if (angle < source_scan_->angle_min + 30 * M_PI / 180.0 || angle > source_scan_->angle_max - 30 * M_PI / 180.0) {
+            continue;
+        }
+
+        auto e = new EdgeSE2Point2Point(&kdtree_, target_cloud_, r, angle);
+        e->setVertex(0, v);
+        e->setInformation(Eigen::Matrix2d::Identity());
+        auto rk = new g2o::RobustKernelHuber;
+        rk->setDelta(rk_delta);
+        e->setRobustKernel(rk);
+        optimizer.addEdge(e);
+    }
+
+    optimizer.setVerbose(false);
+    optimizer.initializeOptimization();
+    optimizer.optimize(10);
+
+    init_pose = v->estimate();
+    return true;
+}
+
+/**
+ * TODO: 使用G2O进行P2L配准
+ * @param init_pose
+ * @return
+ */
+bool Icp2d::AlignG2OP2L(SE2& init_pose) {
+    using BlockSolverType = g2o::BlockSolver<g2o::BlockSolverTraits<3, 1>>;
+    using LinearSolverType = g2o::LinearSolverCholmod<BlockSolverType::PoseMatrixType>;
+    auto* solver = new g2o::OptimizationAlgorithmLevenberg(
+        g2o::make_unique<BlockSolverType>(g2o::make_unique<LinearSolverType>()));
+    g2o::SparseOptimizer optimizer;
+    optimizer.setAlgorithm(solver);
+
+    auto* v = new VertexSE2();
+    v->setId(0);
+    v->setEstimate(init_pose);
+    optimizer.addVertex(v);
+
+    const double rk_delta = 0.8;
+
+    for (size_t i = 0; i < source_scan_->ranges.size(); ++i) {
+        float r = source_scan_->ranges[i];
+        if (r < source_scan_->range_min || r > source_scan_->range_max) {
+            continue;
+        }
+
+        float angle = source_scan_->angle_min + i * source_scan_->angle_increment;
+        if (angle < source_scan_->angle_min + 30 * M_PI / 180.0 || angle > source_scan_->angle_max - 30 * M_PI / 180.0) {
+            continue;
+        }
+
+        auto e = new EdgeSE2Point2Line(&kdtree_, target_cloud_, r, angle);
+        e->setVertex(0, v);
+        e->setInformation(Eigen::Matrix<double, 1, 1>::Identity());
+        auto rk = new g2o::RobustKernelHuber;
+        rk->setDelta(rk_delta);
+        e->setRobustKernel(rk);
+        optimizer.addEdge(e);
+    }
+
+    optimizer.setVerbose(false);
+    optimizer.initializeOptimization();
+    optimizer.optimize(10);
+
+    init_pose = v->estimate();
     return true;
 }
 

@@ -8,7 +8,7 @@ add_library(${PROJECT_NAME}.ch6
         multi_resolution_likelihood_field.cc
         loop_closing.cc
         frame.cc
-        )
+        degeneration_detection.cc)
 
 target_link_libraries(${PROJECT_NAME}.ch6
         ${PCL_LIBRARIES}
@@ -33,6 +33,19 @@ add_executable(test_2d_icp_s2s
         )
 
 target_link_libraries(test_2d_icp_s2s
+        ${PROJECT_NAME}.ch6
+        ${OpenCV_LIBS}
+        ${catkin_LIBRARIES}
+        glog gflags
+        ${PCL_LIBRARIES}
+        ${g2o_libs}
+        )
+
+add_executable(test_scan_degeneration
+        test_scan_degeneration.cc
+        )
+
+target_link_libraries(test_scan_degeneration
         ${PROJECT_NAME}.ch6
         ${OpenCV_LIBS}
         ${catkin_LIBRARIES}

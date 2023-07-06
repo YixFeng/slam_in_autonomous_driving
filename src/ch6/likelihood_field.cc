@@ -38,7 +38,7 @@ void LikelihoodField::SetTargetScan(Scan2d::Ptr scan) {
             int xx = int(x + model_pt.dx_);
             int yy = int(y + model_pt.dy_);
             if (xx >= 0 && xx < field_.cols && yy >= 0 && yy < field_.rows &&
-                field_.at<float>(yy, xx) > model_pt.residual_) {
+                field_.at<float>(yy, xx) > model_pt.residual_) { // 新加入一点P，如果它对似然场中一点的引力（残差）小于该点受其他点影响的引力值，更新残差
                 field_.at<float>(yy, xx) = model_pt.residual_;
             }
         }
@@ -94,15 +94,18 @@ bool LikelihoodField::AlignGaussNewton(SE2& init_pose) {
                 effective_num++;
 
                 // 图像梯度
-                float dx = 0.5 * (field_.at<float>(pf[1], pf[0] + 1) - field_.at<float>(pf[1], pf[0] - 1));
-                float dy = 0.5 * (field_.at<float>(pf[1] + 1, pf[0]) - field_.at<float>(pf[1] - 1, pf[0]));
+                // TODO: 第五章习题2，改成双线性插值
+                float dx = 0.5 * (math::GetPixelValue<float>(field_, pf[0] + 1, pf[1]) -
+                                  math::GetPixelValue<float>(field_, pf[0] - 1, pf[1]));
+                float dy = 0.5 * (math::GetPixelValue<float>(field_, pf[0], pf[1] + 1) -
+                                  math::GetPixelValue<float>(field_, pf[0], pf[1] - 1));
 
                 Vec3d J;
                 J << resolution_ * dx, resolution_ * dy,
                     -resolution_ * dx * r * std::sin(angle + theta) + resolution_ * dy * r * std::cos(angle + theta);
                 H += J * J.transpose();
 
-                float e = field_.at<float>(pf[1], pf[0]);
+                float e = math::GetPixelValue<float>(field_, pf[0], pf[1]);
                 b += -J * e;
 
                 cost += e * e;
@@ -141,7 +144,7 @@ cv::Mat LikelihoodField::GetFieldImage() {
     cv::Mat image(field_.rows, field_.cols, CV_8UC3);
     for (int x = 0; x < field_.cols; ++x) {
         for (int y = 0; y < field_.rows; ++y) {
-            float r = field_.at<float>(y, x) * 255.0 / 30.0;
+            float r = field_.at<float>(y, x) * 255.0 / 30.0; // 设30，是因为field里最大残差是20sqrt(2)
             image.at<cv::Vec3b>(y, x) = cv::Vec3b(uchar(r), uchar(r), uchar(r));
         }
     }

@@ -26,7 +26,7 @@ void Visualize2DScan(Scan2d::Ptr scan, const SE2& pose, cv::Mat& image, const Ve
             continue;
         }
 
-        Vec2d psubmap = pose_submap.inverse() * (pose * Vec2d(x, y));
+        Vec2d psubmap = pose_submap.inverse() * (pose * Vec2d(x, y)); // 首先将lidar系下的points转到world系，再用Tw_submap的逆转到submap系
 
         int image_x = int(psubmap[0] * resolution + image_size / 2);
         int image_y = int(psubmap[1] * resolution + image_size / 2);
